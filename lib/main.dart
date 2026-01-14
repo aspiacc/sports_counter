@@ -7,8 +7,44 @@ import 'storage.dart';
 
 bool get _adsSupported {
   if (kIsWeb) return false;
-  return defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+  return defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
 }
+
+const _defaultThemeKey = 'classic';
+
+class _ThemeOption {
+  final String key;
+  final String label;
+  final Color seed;
+  final Color background;
+  const _ThemeOption(this.key, this.label, this.seed, this.background);
+}
+
+class _ColorDot extends StatelessWidget {
+  final Color color;
+  const _ColorDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.black12),
+      ),
+    );
+  }
+}
+
+const List<_ThemeOption> _themeOptions = [
+  _ThemeOption(_defaultThemeKey, 'Clásico rojo', Colors.red, Color(0xFFFFF4F5)),
+  _ThemeOption('dark', 'Oscuro', Color(0xFF20232A), Color(0xFF111317)),
+  _ThemeOption('green', 'Verde cancha', Color(0xFF0F9D58), Color(0xFFE8F5E9)),
+  _ThemeOption('blue', 'Azul nocturno', Color(0xFF2962FF), Color(0xFFE3F2FD)),
+];
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +53,9 @@ void main() async {
     // ✅ Marca tu dispositivo como "test" para que AdMob muestre Test Ads
     // Reemplazá ABCDEF0123456789 por el hash que verás en la consola/logcat
     await MobileAds.instance.updateRequestConfiguration(
-      RequestConfiguration(testDeviceIds: ['ABCDEF0123456789']), // TODO: put your real test device ID
+      RequestConfiguration(
+        testDeviceIds: ['ABCDEF0123456789'],
+      ), // TODO: put your real test device ID
     );
 
     await MobileAds.instance.initialize();
@@ -46,6 +84,7 @@ class ScoreHome extends StatefulWidget {
 class _ScoreHomeState extends State<ScoreHome> {
   int home = 0, away = 0;
   String homeName = 'Home', awayName = 'Away';
+  String _themeKey = _defaultThemeKey;
   final List<(String, int)> _history = [];
   BannerAd? _banner;
   InterstitialAd? _interstitial;
@@ -63,11 +102,13 @@ class _ScoreHomeState extends State<ScoreHome> {
   Future<void> _loadState() async {
     final scores = await Storage.loadScores();
     final names = await Storage.loadNames();
+    final theme = await Storage.loadTheme();
     setState(() {
       home = scores.$1;
       away = scores.$2;
       homeName = names.$1;
       awayName = names.$2;
+      _themeKey = theme;
     });
   }
 
@@ -118,29 +159,73 @@ class _ScoreHomeState extends State<ScoreHome> {
       home = 0;
       away = 0;
       _history.clear();
+      _themeKey = _defaultThemeKey;
     });
     await Storage.reset();
   }
 
   Future<void> _openSettings() async {
-    final result = await showDialog<(String, String)>(
+    final result = await showDialog<(String, String, String)>(
       context: context,
       builder: (ctx) {
         final hc = TextEditingController(text: homeName);
         final ac = TextEditingController(text: awayName);
-        return AlertDialog(
-          title: const Text('Settings'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: hc, decoration: const InputDecoration(labelText: 'Home name')),
-              TextField(controller: ac, decoration: const InputDecoration(labelText: 'Away name')),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, (hc.text, ac.text)), child: const Text('Save')),
-          ],
+        var selectedTheme = _themeKey;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Settings'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: hc,
+                    decoration: const InputDecoration(labelText: 'Home name'),
+                  ),
+                  TextField(
+                    controller: ac,
+                    decoration: const InputDecoration(labelText: 'Away name'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedTheme,
+                    decoration: const InputDecoration(
+                      labelText: 'Tema de colores',
+                    ),
+                    items: _themeOptions.map((opt) {
+                      return DropdownMenuItem(
+                        value: opt.key,
+                        child: Row(
+                          children: [
+                            _ColorDot(color: opt.background),
+                            const SizedBox(width: 6),
+                            _ColorDot(color: opt.seed),
+                            const SizedBox(width: 8),
+                            Text(opt.label),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => selectedTheme = value);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(ctx, (hc.text, ac.text, selectedTheme)),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -149,8 +234,10 @@ class _ScoreHomeState extends State<ScoreHome> {
       setState(() {
         homeName = result.$1.trim().isEmpty ? 'Home' : result.$1.trim();
         awayName = result.$2.trim().isEmpty ? 'Away' : result.$2.trim();
+        _themeKey = result.$3;
       });
       await Storage.saveNames(homeName, awayName);
+      await Storage.saveTheme(_themeKey);
     }
 
     _interstitial?.show();
@@ -164,17 +251,35 @@ class _ScoreHomeState extends State<ScoreHome> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          Text(label, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 8),
-          Text('$score', style: const TextStyle(fontSize: 72, fontWeight: FontWeight.bold)),
+          Text(
+            '$score',
+            style: const TextStyle(fontSize: 72, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             children: [
-              FilledButton(onPressed: () => onDelta(1), child: const Text('+1')),
-              FilledButton(onPressed: () => onDelta(2), child: const Text('+2')),
-              FilledButton(onPressed: () => onDelta(3), child: const Text('+3')),
-              OutlinedButton(onPressed: () => onDelta(-1), child: const Text('–1')),
+              FilledButton(
+                onPressed: () => onDelta(1),
+                child: const Text('+1'),
+              ),
+              FilledButton(
+                onPressed: () => onDelta(2),
+                child: const Text('+2'),
+              ),
+              FilledButton(
+                onPressed: () => onDelta(3),
+                child: const Text('+3'),
+              ),
+              OutlinedButton(
+                onPressed: () => onDelta(-1),
+                child: const Text('–1'),
+              ),
             ],
           ),
         ],
@@ -191,39 +296,82 @@ class _ScoreHomeState extends State<ScoreHome> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = _themeOptions.firstWhere(
+      (opt) => opt.key == _themeKey,
+      orElse: () => _themeOptions.first,
+    );
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: theme.seed,
+      brightness: theme.key == 'dark' ? Brightness.dark : Brightness.light,
+    );
+    final themedData = Theme.of(context).copyWith(
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: theme.background,
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: colorScheme.primary,
+          side: BorderSide(color: colorScheme.primary),
+        ),
+      ),
+    );
     final bannerWidget = _banner == null
         ? const SizedBox(height: 0)
-        : SizedBox(height: _banner!.size.height.toDouble(), child: AdWidget(ad: _banner!));
+        : SizedBox(
+            height: _banner!.size.height.toDouble(),
+            child: AdWidget(ad: _banner!),
+          );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sports Counter'),
-        actions: [IconButton(icon: const Icon(Icons.settings), onPressed: _openSettings)],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                _teamColumn(homeName, home, (d) => _score('home', d)),
-                const VerticalDivider(width: 1),
-                _teamColumn(awayName, away, (d) => _score('away', d)),
-              ],
+    return Theme(
+      data: themedData,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Sports Counter'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: _openSettings,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                FilledButton.icon(onPressed: _undo, icon: const Icon(Icons.undo), label: const Text('Undo')),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(onPressed: _reset, icon: const Icon(Icons.restart_alt), label: const Text('Reset')),
-                const Spacer(),
-              ],
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  _teamColumn(homeName, home, (d) => _score('home', d)),
+                  const VerticalDivider(width: 1),
+                  _teamColumn(awayName, away, (d) => _score('away', d)),
+                ],
+              ),
             ),
-          ),
-          bannerWidget,
-        ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  FilledButton.icon(
+                    onPressed: _undo,
+                    icon: const Icon(Icons.undo),
+                    label: const Text('Undo'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _reset,
+                    icon: const Icon(Icons.restart_alt),
+                    label: const Text('Reset'),
+                  ),
+                  const Spacer(),
+                ],
+              ),
+            ),
+            bannerWidget,
+          ],
+        ),
       ),
     );
   }

@@ -1,4 +1,4 @@
-package com.example.sports_counter
+package com.maferrero.sports_counter
 
 import io.flutter.embedding.android.FlutterActivity
 
