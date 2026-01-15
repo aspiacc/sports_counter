@@ -12,6 +12,7 @@ import 'package:sports_counter/main.dart';
 void main() {
   testWidgets('Home score increments', (WidgetTester tester) async {
     await tester.pumpWidget(const ScoreApp());
+    await tester.pumpAndSettle();
 
     // Two teams should start at 0 points each
     expect(find.text('0'), findsNWidgets(2));

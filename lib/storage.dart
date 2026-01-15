@@ -5,7 +5,8 @@ class Storage {
       _kAway = 'awayScore',
       _kHomeName = 'homeName',
       _kAwayName = 'awayName',
-      _kTheme = 'themeKey';
+      _kTheme = 'themeKey',
+      _kLocale = 'locale';
 
   static Future<void> saveScores(int home, int away) async {
     final p = await SharedPreferences.getInstance();
@@ -27,8 +28,8 @@ class Storage {
   static Future<(String, String)> loadNames() async {
     final p = await SharedPreferences.getInstance();
     return (
-      p.getString(_kHomeName) ?? 'Local',
-      p.getString(_kAwayName) ?? 'Visitante',
+      p.getString(_kHomeName) ?? 'Home',
+      p.getString(_kAwayName) ?? 'Away',
     );
   }
 
@@ -40,6 +41,16 @@ class Storage {
   static Future<String> loadTheme() async {
     final p = await SharedPreferences.getInstance();
     return p.getString(_kTheme) ?? 'classic';
+  }
+
+  static Future<void> saveLocale(String code) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kLocale, code);
+  }
+
+  static Future<String> loadLocale() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_kLocale) ?? 'en';
   }
 
   static Future<void> reset() async {

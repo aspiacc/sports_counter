@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'ad_helper.dart';
 import 'storage.dart';
+import 'l10n/app_localizations.dart';
 // import 'package:flutter/services.dart'; // Opcional si querés HapticFeedback
 
 bool get _adsSupported {
@@ -12,13 +14,13 @@ bool get _adsSupported {
 }
 
 const _defaultThemeKey = 'classic';
+const _languageCodes = ['en', 'es'];
 
 class _ThemeOption {
   final String key;
-  final String label;
   final Color seed;
   final Color background;
-  const _ThemeOption(this.key, this.label, this.seed, this.background);
+  const _ThemeOption(this.key, this.seed, this.background);
 }
 
 class _ColorDot extends StatelessWidget {
@@ -40,10 +42,10 @@ class _ColorDot extends StatelessWidget {
 }
 
 const List<_ThemeOption> _themeOptions = [
-  _ThemeOption(_defaultThemeKey, 'Clásico rojo', Colors.red, Color(0xFFFFF4F5)),
-  _ThemeOption('dark', 'Oscuro', Color(0xFF20232A), Color(0xFF111317)),
-  _ThemeOption('green', 'Verde cancha', Color(0xFF0F9D58), Color(0xFFE8F5E9)),
-  _ThemeOption('blue', 'Azul nocturno', Color(0xFF2962FF), Color(0xFFE3F2FD)),
+  _ThemeOption(_defaultThemeKey, Colors.red, Color(0xFFFFF4F5)),
+  _ThemeOption('dark', Color(0xFF20232A), Color(0xFF111317)),
+  _ThemeOption('green', Color(0xFF0F9D58), Color(0xFFE8F5E9)),
+  _ThemeOption('blue', Color(0xFF2962FF), Color(0xFFE3F2FD)),
 ];
 
 void main() async {
@@ -63,20 +65,62 @@ void main() async {
   runApp(const ScoreApp());
 }
 
-class ScoreApp extends StatelessWidget {
+class ScoreApp extends StatefulWidget {
   const ScoreApp({super.key});
+  @override
+  State<ScoreApp> createState() => _ScoreAppState();
+}
+
+class _ScoreAppState extends State<ScoreApp> {
+  String _localeCode = 'en';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocale();
+  }
+
+  Future<void> _loadLocale() async {
+    final code = await Storage.loadLocale();
+    if (!mounted) return;
+    setState(() => _localeCode = code);
+  }
+
+  Future<void> _handleLocaleChanged(String code) async {
+    await Storage.saveLocale(code);
+    if (!mounted) return;
+    setState(() => _localeCode = code);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sports Counter',
+      locale: Locale(_localeCode),
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.red),
-      home: const ScoreHome(),
+      home: ScoreHome(
+        initialLocale: _localeCode,
+        onLocaleChanged: _handleLocaleChanged,
+      ),
     );
   }
 }
 
 class ScoreHome extends StatefulWidget {
-  const ScoreHome({super.key});
+  final ValueChanged<String> onLocaleChanged;
+  final String initialLocale;
+  const ScoreHome({
+    super.key,
+    required this.onLocaleChanged,
+    required this.initialLocale,
+  });
   @override
   State<ScoreHome> createState() => _ScoreHomeState();
 }
@@ -85,6 +129,7 @@ class _ScoreHomeState extends State<ScoreHome> {
   int home = 0, away = 0;
   String homeName = 'Home', awayName = 'Away';
   String _themeKey = _defaultThemeKey;
+  late String _localeCode;
   final List<(String, int)> _history = [];
   BannerAd? _banner;
   InterstitialAd? _interstitial;
@@ -92,10 +137,21 @@ class _ScoreHomeState extends State<ScoreHome> {
   @override
   void initState() {
     super.initState();
+    _localeCode = widget.initialLocale;
     _loadState();
     if (_adsSupported) {
       _loadBanner();
       _loadInterstitial();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ScoreHome oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialLocale != widget.initialLocale) {
+      setState(() {
+        _localeCode = widget.initialLocale;
+      });
     }
   }
 
@@ -165,32 +221,34 @@ class _ScoreHomeState extends State<ScoreHome> {
   }
 
   Future<void> _openSettings() async {
-    final result = await showDialog<(String, String, String)>(
+    final result = await showDialog<(String, String, String, String)>(
       context: context,
       builder: (ctx) {
         final hc = TextEditingController(text: homeName);
         final ac = TextEditingController(text: awayName);
+        final l10n = AppLocalizations.of(ctx);
+        var selectedLanguage = _localeCode;
         var selectedTheme = _themeKey;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Settings'),
+              title: Text(l10n.settingsTitle),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: hc,
-                    decoration: const InputDecoration(labelText: 'Home name'),
+                    decoration: InputDecoration(labelText: l10n.homeNameLabel),
                   ),
                   TextField(
                     controller: ac,
-                    decoration: const InputDecoration(labelText: 'Away name'),
+                    decoration: InputDecoration(labelText: l10n.awayNameLabel),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: selectedTheme,
-                    decoration: const InputDecoration(
-                      labelText: 'Tema de colores',
+                    decoration: InputDecoration(
+                      labelText: l10n.themeFieldLabel,
                     ),
                     items: _themeOptions.map((opt) {
                       return DropdownMenuItem(
@@ -201,7 +259,7 @@ class _ScoreHomeState extends State<ScoreHome> {
                             const SizedBox(width: 6),
                             _ColorDot(color: opt.seed),
                             const SizedBox(width: 8),
-                            Text(opt.label),
+                            Text(l10n.themeName(opt.key)),
                           ],
                         ),
                       );
@@ -211,17 +269,40 @@ class _ScoreHomeState extends State<ScoreHome> {
                       setDialogState(() => selectedTheme = value);
                     },
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedLanguage,
+                    decoration: InputDecoration(
+                      labelText: l10n.languageFieldLabel,
+                    ),
+                    items: _languageCodes
+                        .map(
+                          (code) => DropdownMenuItem(
+                            value: code,
+                            child: Text(l10n.languageName(code)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => selectedLanguage = value);
+                    },
+                  ),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.cancel),
                 ),
                 FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(ctx, (hc.text, ac.text, selectedTheme)),
-                  child: const Text('Save'),
+                  onPressed: () => Navigator.pop(ctx, (
+                    hc.text,
+                    ac.text,
+                    selectedTheme,
+                    selectedLanguage,
+                  )),
+                  child: Text(l10n.save),
                 ),
               ],
             );
@@ -235,9 +316,11 @@ class _ScoreHomeState extends State<ScoreHome> {
         homeName = result.$1.trim().isEmpty ? 'Home' : result.$1.trim();
         awayName = result.$2.trim().isEmpty ? 'Away' : result.$2.trim();
         _themeKey = result.$3;
+        _localeCode = result.$4;
       });
       await Storage.saveNames(homeName, awayName);
       await Storage.saveTheme(_themeKey);
+      widget.onLocaleChanged(_localeCode);
     }
 
     _interstitial?.show();
@@ -296,6 +379,7 @@ class _ScoreHomeState extends State<ScoreHome> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = _themeOptions.firstWhere(
       (opt) => opt.key == _themeKey,
       orElse: () => _themeOptions.first,
@@ -331,7 +415,7 @@ class _ScoreHomeState extends State<ScoreHome> {
       data: themedData,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Sports Counter'),
+          title: Text(l10n.appTitle),
           actions: [
             IconButton(
               icon: const Icon(Icons.settings),
@@ -357,13 +441,13 @@ class _ScoreHomeState extends State<ScoreHome> {
                   FilledButton.icon(
                     onPressed: _undo,
                     icon: const Icon(Icons.undo),
-                    label: const Text('Undo'),
+                    label: Text(l10n.undo),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _reset,
                     icon: const Icon(Icons.restart_alt),
-                    label: const Text('Reset'),
+                    label: Text(l10n.reset),
                   ),
                   const Spacer(),
                 ],
